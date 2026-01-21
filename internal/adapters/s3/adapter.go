@@ -80,13 +80,6 @@ func (a *Adapter) List(ctx context.Context, prefix string) (<-chan domain.FileIn
 					continue
 				}
 
-				// Check for folder-like objects (trailing slash, size 0) that are NOT the prefix itself
-				// If we want to copy only files, we might skip them?
-				// But empty folders might be desired? S3 doesn't really have folders.
-				// For migration, we usually want to copy everything including 0-byte markers.
-				// But generally "File" implies data.
-				// Let's copy everything except the prefix itself if it matches exactly.
-
 				outCh <- domain.FileInfo{
 					Key:          key,
 					Size:         size,

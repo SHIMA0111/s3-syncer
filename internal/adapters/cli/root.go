@@ -22,9 +22,9 @@ var (
 )
 
 var rootCmd = &cobra.Command{
-	Use:   "s3-copy",
+	Use:   "s3-syncer",
 	Short: "A high-performance S3 data migration tool",
-	Long:  `s3-copy allows you to copy data between S3 buckets, extending support for cross-account copying via profiles.`,
+	Long:  `s3-syncer allows you to copy data between S3 buckets, extending support for cross-account copying via profiles.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		ctx := cmd.Context()
 
@@ -70,7 +70,7 @@ var rootCmd = &cobra.Command{
 			// Let's set Max to found.
 			bar.ChangeMax64(found)
 			bar.Set64(copied)
-			bar.Describe(fmt.Sprintf("Found: %d | Copied", found))
+			bar.Describe(fmt.Sprintf("Found: %d | Copied: %d", found, copied))
 		}
 
 		err = svc.Copy(ctx, prefix, onProgress)

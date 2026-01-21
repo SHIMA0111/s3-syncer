@@ -17,7 +17,7 @@
 Requirements: Go 1.18 or later.
 
 ```bash
-git clone https://github.com/yourusername/s3-copy.git
+git clone https://github.com/SHIMA0111/s3-syncer.git
 cd s3-syncer
 go build -o s3-syncer ./cmd/s3-syncer
 ```
@@ -51,10 +51,10 @@ You can adjust the `--workers` flag. While Goroutines are efficient and can hand
 
 #### Recommended Settings
 
-| Environment Spec | Workers | Note |
-|------------|-------------|------|
-| **Local PC / Low Bandwidth** | 10 - 50 | Default (10) is safe. |
-| **Standard Server (2-4 vCPU)** | 50 - 200 | Good for most use cases. |
+| Environment Spec                       | Workers     | Note                               |
+|----------------------------------------|-------------|------------------------------------|
+| **Local PC / Low Bandwidth**           | 10 - 50     | Default (10) is safe.              |
+| **Standard Server (2-4 vCPU)**         | 50 - 200    | Good for most use cases.           |
 | **High End Server (8+ vCPU, 10Gbps+)** | 300 - 1000+ | Effective for massive small files. |
 
 #### Note on S3 API Limits
@@ -68,15 +68,15 @@ Exceeding this with too many workers (e.g., 2000+) may cause `503 Slow Down` err
 
 ### Flags
 
-| Flag | Description | Default |
-|------|-------------|---------|
-| `--src-bucket` | Source S3 bucket name (required) | |
-| `--dst-bucket` | Destination S3 bucket name (required) | |
-| `--src-profile` | AWS profile for source account | default |
-| `--dst-profile` | AWS profile for destination account | default |
-| `--prefix` | Prefix filter for keys to copy | "" |
-| `--region` | AWS Region | us-east-1 |
-| `--workers` | Number of concurrent workers | 10 |
+| Flag            | Description                           | Default   |
+|-----------------|---------------------------------------|-----------|
+| `--src-bucket`  | Source S3 bucket name (required)      |           |
+| `--dst-bucket`  | Destination S3 bucket name (required) |           |
+| `--src-profile` | AWS profile for source account        | default   |
+| `--dst-profile` | AWS profile for destination account   | default   |
+| `--prefix`      | Prefix filter for keys to copy        | ""        |
+| `--region`      | AWS Region                            | us-east-1 |
+| `--workers`     | Number of concurrent workers          | 10        |
 
 ## Architecture
 

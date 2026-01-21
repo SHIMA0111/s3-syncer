@@ -41,6 +41,16 @@ func (s *CopyService) Copy(ctx context.Context, prefix string, onProgress Progre
 	var foundCount, copiedCount atomic.Int64
 	var errs []error
 	var errMu sync.Mutex
+	var progressMu sync.Mutex
+
+	safeProgress := func(found, copied int64) {
+		if onProgress != nil {
+			return
+		}
+		progressMu.Lock()
+		defer progressMu.Unlock()
+		onProgress(found, copied)
+	}
 
 	// Worker pool
 	// We use a semaphore pattern or just spawn N workers consuming the channel.
@@ -53,9 +63,7 @@ func (s *CopyService) Copy(ctx context.Context, prefix string, onProgress Progre
 			for file := range filesCh {
 				// Update Found Count
 				currentFound := foundCount.Add(1)
-				if onProgress != nil {
-					onProgress(currentFound, copiedCount.Load())
-				}
+				safeProgress(currentFound, copiedCount.Load())
 
 				// Perform Copy
 				err := s.copyFile(ctx, file)
@@ -66,22 +74,21 @@ func (s *CopyService) Copy(ctx context.Context, prefix string, onProgress Progre
 					// Continue to next file
 				} else {
 					currentCopied := copiedCount.Add(1)
-					if onProgress != nil {
-						onProgress(currentFound, currentCopied)
-					}
+					safeProgress(currentFound, currentCopied)
 				}
 			}
 		}()
 	}
 
 	// Wait for List to finish (it closes filesCh)
-	// checking list error
-	if err := <-listErrCh; err != nil {
-		return fmt.Errorf("listing failed: %w", err)
-	}
+	listErr := <-listErrCh
 
 	// Wait for workers to finish
 	wg.Wait()
+
+	if listErr != nil {
+		return fmt.Errorf("failed to list files: %w", listErr)
+	}
 
 	if len(errs) > 0 {
 		return fmt.Errorf("encountered %d errors during copy", len(errs))
