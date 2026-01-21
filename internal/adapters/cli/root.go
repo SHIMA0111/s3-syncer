@@ -50,7 +50,10 @@ var rootCmd = &cobra.Command{
 		}
 
 		// Initialize Service
-		svc := services.NewCopyService(srcStorage, dstStorage, workers)
+		svc, err := services.NewCopyService(ctx, srcStorage, dstStorage, workers)
+		if err != nil {
+			return fmt.Errorf("failed to initialize copy service: %w", err)
+		}
 
 		fmt.Println("Starting migration...")
 
@@ -69,7 +72,7 @@ var rootCmd = &cobra.Command{
 
 			// Let's set Max to found.
 			bar.ChangeMax64(found)
-			bar.Set64(copied)
+			_ = bar.Set64(copied)
 			bar.Describe(fmt.Sprintf("Found: %d | Copied: %d", found, copied))
 		}
 
@@ -78,7 +81,7 @@ var rootCmd = &cobra.Command{
 			return err
 		}
 
-		bar.Finish()
+		_ = bar.Finish()
 		fmt.Println("\nMigration completed successfully!")
 		return nil
 	},
@@ -86,7 +89,7 @@ var rootCmd = &cobra.Command{
 
 func Execute() {
 	if err := rootCmd.Execute(); err != nil {
-		fmt.Fprintln(os.Stderr, err)
+		_, _ = fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 }

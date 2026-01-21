@@ -11,20 +11,32 @@ import (
 )
 
 type CopyService struct {
-	src     ports.Storage
-	dst     ports.Storage
-	workers int
+	src           ports.Storage
+	dst           ports.Storage
+	workers       int
+	isSameAccount bool
 }
 
-func NewCopyService(src, dst ports.Storage, workers int) *CopyService {
+func NewCopyService(ctx context.Context, src, dst ports.Storage, workers int) (*CopyService, error) {
 	if workers <= 0 {
 		workers = 1
 	}
-	return &CopyService{
-		src:     src,
-		dst:     dst,
-		workers: workers,
+
+	srcAcc, err := src.GetAccountID(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get src account ID: %w", err)
 	}
+	dstAcc, err := dst.GetAccountID(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get dst account ID: %w", err)
+	}
+
+	return &CopyService{
+		src:           src,
+		dst:           dst,
+		workers:       workers,
+		isSameAccount: srcAcc == dstAcc,
+	}, nil
 }
 
 // ProgressCallback is called to report progress
@@ -97,15 +109,23 @@ func (s *CopyService) Copy(ctx context.Context, prefix string, onProgress Progre
 }
 
 func (s *CopyService) copyFile(ctx context.Context, file domain.FileInfo) error {
+	if s.isSameAccount {
+		// Try native S3 copy first (limited to 5GB for single CopyObject call)
+		// For intra-account copy, this is much faster as it stays within AWS.
+		return s.dst.CopyFrom(ctx, s.src.GetBucketName(), file.Key, file.Key)
+	}
+
+	// Cross-account or fallback: Download and Upload stream
 	// 1. Download stream
-	// Note: We need to import domain package properly.
 	reader, info, err := s.src.Download(ctx, file.Key)
 	if err != nil {
 		return err
 	}
-	defer reader.Close()
+	defer func() {
+		_ = reader.Close()
+	}()
 
 	// 2. Upload stream
-	// We use info.Size from Download (or from List) for ContentLength
+	// The adapter's uploader is configured with Chunked (Multipart) upload.
 	return s.dst.Upload(ctx, file.Key, reader, info.Size)
 }

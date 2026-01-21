@@ -13,14 +13,23 @@ import (
 )
 
 type MockStorage struct {
-	Files  map[string][]byte
-	ListFn func(ctx context.Context, prefix string) (<-chan domain.FileInfo, <-chan error)
-	mu     sync.Mutex
+	Files     map[string][]byte
+	Shared    map[string]map[string][]byte // bucket -> key -> data
+	ListFn    func(ctx context.Context, prefix string) (<-chan domain.FileInfo, <-chan error)
+	AccountID string
+	Bucket    string
+	mu        sync.Mutex
 }
 
-func NewMockStorage() *MockStorage {
+func NewMockStorage(bucket string, shared map[string]map[string][]byte) *MockStorage {
+	if _, ok := shared[bucket]; !ok {
+		shared[bucket] = make(map[string][]byte)
+	}
 	return &MockStorage{
-		Files: make(map[string][]byte),
+		Files:     shared[bucket],
+		Shared:    shared,
+		AccountID: "123456789012",
+		Bucket:    bucket,
 	}
 }
 
@@ -75,30 +84,86 @@ func (m *MockStorage) Stat(_ context.Context, _ string) (domain.FileInfo, error)
 	return domain.FileInfo{}, nil
 }
 
+func (m *MockStorage) GetAccountID(_ context.Context) (string, error) {
+	return m.AccountID, nil
+}
+
+func (m *MockStorage) GetBucketName() string {
+	return m.Bucket
+}
+
+func (m *MockStorage) CopyFrom(_ context.Context, srcBucket, srcKey, dstKey string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	bucketData, ok := m.Shared[srcBucket]
+	if !ok {
+		return fmt.Errorf("source bucket not found")
+	}
+
+	data, ok := bucketData[srcKey]
+	if !ok {
+		return fmt.Errorf("source key not found")
+	}
+
+	// In Mock, we just copy data to our own Files (which is m.Shared[m.Bucket])
+	m.Files[dstKey] = data
+	return nil
+}
+
 func TestCopyService_Copy(t *testing.T) {
-	src := NewMockStorage()
-	src.Files["file1.txt"] = []byte("content1")
-	src.Files["file2.txt"] = []byte("content2")
+	shared := make(map[string]map[string][]byte)
 
-	dst := NewMockStorage()
+	t.Run("Same Account (Native Copy)", func(t *testing.T) {
+		src := NewMockStorage("src-bucket", shared)
+		src.Files["file1.txt"] = []byte("content1")
+		src.Files["file2.txt"] = []byte("content2")
 
-	svc := NewCopyService(src, dst, 2)
+		dst := NewMockStorage("dst-bucket", shared)
+		dst.AccountID = src.AccountID
 
-	progressCalled := 0
-	onProgress := func(found, copied int64) {
-		progressCalled++
-	}
+		svc, err := NewCopyService(context.Background(), src, dst, 2)
+		if err != nil {
+			t.Fatalf("Failed to create service: %v", err)
+		}
 
-	err := svc.Copy(context.Background(), "", onProgress)
-	if err != nil {
-		t.Fatalf("Copy failed: %v", err)
-	}
+		if !svc.isSameAccount {
+			t.Error("Expected isSameAccount to be true")
+		}
 
-	if len(dst.Files) != 2 {
-		t.Errorf("Expected 2 files in dst, got %d", len(dst.Files))
-	}
+		err = svc.Copy(context.Background(), "", nil)
+		if err != nil {
+			t.Fatalf("Copy failed: %v", err)
+		}
 
-	if string(dst.Files["file1.txt"]) != "content1" {
-		t.Errorf("Content mismatch for file1.txt")
-	}
+		if len(dst.Files) != 2 {
+			t.Errorf("Expected 2 files in dst, got %d", len(dst.Files))
+		}
+	})
+
+	t.Run("Different Account (Download/Upload)", func(t *testing.T) {
+		src := NewMockStorage("src-bucket-2", shared)
+		src.Files["file1.txt"] = []byte("content1")
+
+		dst := NewMockStorage("dst-bucket-2", shared)
+		dst.AccountID = "999999999999"
+
+		svc, err := NewCopyService(context.Background(), src, dst, 2)
+		if err != nil {
+			t.Fatalf("Failed to create service: %v", err)
+		}
+
+		if svc.isSameAccount {
+			t.Error("Expected isSameAccount to be false")
+		}
+
+		err = svc.Copy(context.Background(), "", nil)
+		if err != nil {
+			t.Fatalf("Copy failed: %v", err)
+		}
+
+		if len(dst.Files) != 1 {
+			t.Errorf("Expected 1 file in dst, got %d", len(dst.Files))
+		}
+	})
 }

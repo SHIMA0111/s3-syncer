@@ -9,15 +9,17 @@ import (
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/feature/s3/manager"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/aws/aws-sdk-go-v2/service/sts"
 
 	"github.com/SHIMA0111/s3-syncer/internal/core/domain"
 	"github.com/SHIMA0111/s3-syncer/internal/core/ports"
 )
 
 type Adapter struct {
-	client   *s3.Client
-	uploader *manager.Uploader
-	bucket   string
+	client    *s3.Client
+	uploader  *manager.Uploader
+	bucket    string
+	accountID string
 }
 
 // Ensure Adapter implements ports.Storage
@@ -39,11 +41,42 @@ func NewAdapter(ctx context.Context, bucket, profile string, region string) (*Ad
 	}
 
 	client := s3.NewFromConfig(cfg)
+	stsClient := sts.NewFromConfig(cfg)
+	identity, err := stsClient.GetCallerIdentity(ctx, &sts.GetCallerIdentityInput{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to get caller identity: %w", err)
+	}
+
 	return &Adapter{
-		client:   client,
-		uploader: manager.NewUploader(client),
-		bucket:   bucket,
+		client: client,
+		uploader: manager.NewUploader(client, func(u *manager.Uploader) {
+			u.PartSize = 64 * 1024 * 1024 // 64MB
+			u.Concurrency = 1             // Already paralleled by CopyService workers
+		}),
+		bucket:    bucket,
+		accountID: aws.ToString(identity.Account),
 	}, nil
+}
+
+func (a *Adapter) GetAccountID(_ context.Context) (string, error) {
+	return a.accountID, nil
+}
+
+func (a *Adapter) GetBucketName() string {
+	return a.bucket
+}
+
+func (a *Adapter) CopyFrom(ctx context.Context, srcBucket, srcKey, dstKey string) error {
+	copySource := fmt.Sprintf("%s/%s", srcBucket, srcKey)
+	_, err := a.client.CopyObject(ctx, &s3.CopyObjectInput{
+		Bucket:     aws.String(a.bucket),
+		CopySource: aws.String(copySource),
+		Key:        aws.String(dstKey),
+	})
+	if err != nil {
+		return fmt.Errorf("failed to copy object from %s to %s: %w", copySource, dstKey, err)
+	}
+	return nil
 }
 
 func (a *Adapter) List(ctx context.Context, prefix string) (<-chan domain.FileInfo, <-chan error) {

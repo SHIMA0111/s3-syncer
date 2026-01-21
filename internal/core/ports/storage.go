@@ -21,4 +21,13 @@ type Storage interface {
 
 	// Stat returns the FileInfo for the specified key.
 	Stat(ctx context.Context, key string) (domain.FileInfo, error)
+
+	// GetAccountID returns the AWS account ID.
+	GetAccountID(ctx context.Context) (string, error)
+
+	// GetBucketName returns the bucket name.
+	GetBucketName() string
+
+	// CopyFrom performs a server-side copy.
+	CopyFrom(ctx context.Context, srcBucket, srcKey, dstKey string) error
 }
