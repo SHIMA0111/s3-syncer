@@ -1,15 +1,24 @@
 package cli
 
 import (
+	"context"
 	"fmt"
+	"io"
 	"os"
 
 	"github.com/schollz/progressbar/v3"
 	"github.com/spf13/cobra"
 
 	"github.com/SHIMA0111/s3-syncer/internal/adapters/s3"
+	"github.com/SHIMA0111/s3-syncer/internal/core/ports"
 	"github.com/SHIMA0111/s3-syncer/internal/core/services"
 )
+
+type StorageFactory func(ctx context.Context, bucket, profile, region string) (ports.Storage, error)
+
+var storageFactory StorageFactory = func(ctx context.Context, bucket, profile, region string) (ports.Storage, error) {
+	return s3.NewAdapter(ctx, bucket, profile, region)
+}
 
 var (
 	srcProfile string
@@ -19,6 +28,8 @@ var (
 	prefix     string
 	workers    int
 	region     string
+
+	outWriter io.Writer = os.Stdout
 )
 
 var rootCmd = &cobra.Command{
@@ -37,14 +48,14 @@ var rootCmd = &cobra.Command{
 		// For simplicity, we pass a common region or handle it in config loading.
 		// We'll add a region flag.
 
-		fmt.Printf("Initializing S3 clients...\nSrc Profile: %s\nDst Profile: %s\n", srcProfile, dstProfile)
+		_, _ = fmt.Fprintf(outWriter, "Initializing S3 clients...\nSrc Profile: %s\nDst Profile: %s\n", srcProfile, dstProfile)
 
-		srcStorage, err := s3.NewAdapter(ctx, srcBucket, srcProfile, region)
+		srcStorage, err := storageFactory(ctx, srcBucket, srcProfile, region)
 		if err != nil {
 			return fmt.Errorf("failed to initialize source storage: %w", err)
 		}
 
-		dstStorage, err := s3.NewAdapter(ctx, dstBucket, dstProfile, region)
+		dstStorage, err := storageFactory(ctx, dstBucket, dstProfile, region)
 		if err != nil {
 			return fmt.Errorf("failed to initialize destination storage: %w", err)
 		}
@@ -55,11 +66,17 @@ var rootCmd = &cobra.Command{
 			return fmt.Errorf("failed to initialize copy service: %w", err)
 		}
 
-		fmt.Println("Starting migration...")
+		_, _ = fmt.Fprintln(outWriter, "Starting migration...")
 
 		// Progress Bar
 		// We use -1 for indeterminate total initially, effectively a spinner + counter
-		bar := progressbar.Default(-1, "Copying objects")
+		bar := progressbar.NewOptions64(-1,
+			progressbar.OptionSetDescription("Copying objects"),
+			progressbar.OptionSetWriter(outWriter),
+			progressbar.OptionShowCount(),
+			progressbar.OptionSetWidth(15),
+			progressbar.OptionClearOnFinish(),
+		)
 
 		// Callback
 		onProgress := func(found, copied int64) {
@@ -82,7 +99,7 @@ var rootCmd = &cobra.Command{
 		}
 
 		_ = bar.Finish()
-		fmt.Println("\nMigration completed successfully!")
+		_, _ = fmt.Fprintln(outWriter, "\nMigration completed successfully!")
 		return nil
 	},
 }

@@ -15,9 +15,20 @@ import (
 	"github.com/SHIMA0111/s3-syncer/internal/core/ports"
 )
 
+type S3API interface {
+	CopyObject(ctx context.Context, params *s3.CopyObjectInput, optFns ...func(*s3.Options)) (*s3.CopyObjectOutput, error)
+	ListObjectsV2(ctx context.Context, params *s3.ListObjectsV2Input, optFns ...func(*s3.Options)) (*s3.ListObjectsV2Output, error)
+	GetObject(ctx context.Context, params *s3.GetObjectInput, optFns ...func(*s3.Options)) (*s3.GetObjectOutput, error)
+	HeadObject(ctx context.Context, params *s3.HeadObjectInput, optFns ...func(*s3.Options)) (*s3.HeadObjectOutput, error)
+}
+
+type UploaderAPI interface {
+	Upload(ctx context.Context, input *s3.PutObjectInput, opts ...func(*manager.Uploader)) (*manager.UploadOutput, error)
+}
+
 type Adapter struct {
-	client    *s3.Client
-	uploader  *manager.Uploader
+	client    S3API
+	uploader  UploaderAPI
 	bucket    string
 	accountID string
 }
