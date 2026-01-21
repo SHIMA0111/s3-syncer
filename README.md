@@ -19,7 +19,7 @@ Requirements: Go 1.18 or later.
 ```bash
 git clone https://github.com/SHIMA0111/s3-syncer.git
 cd s3-syncer
-go build -o s3-syncer ./cmd/s3-syncer
+go build -o s3-syncer ./cmd
 ```
 
 ## Usage
