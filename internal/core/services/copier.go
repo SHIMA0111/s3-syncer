@@ -44,7 +44,7 @@ func (s *CopyService) Copy(ctx context.Context, prefix string, onProgress Progre
 	var progressMu sync.Mutex
 
 	safeProgress := func(found, copied int64) {
-		if onProgress != nil {
+		if onProgress == nil {
 			return
 		}
 		progressMu.Lock()
